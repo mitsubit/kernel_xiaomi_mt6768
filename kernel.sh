@@ -5,19 +5,30 @@
 # Copyright (c) 2018-2021 Panchajanya1999 <rsk52959@gmail.com>
 # Copyright (c) 2023 Hoppless <hoppless@proton.me>
 # Rewrites script by: Hoppless <hoppless@proton.me>
+# Rewrites script by: Tanmsyffa <sltnmsyffaa@gmail.com>
 
 set -e
 
+cdir() {
+	cd "$1" 2>/dev/null || msger -e "The directory $1 doesn't exists !"
+}
+
 # Directory info
-KDIR="$(pwd)"
+KERNEL_DIR="$(pwd)"
+GCC64_DIR=$KERNEL_DIR/gcc64
+GCC32_DIR=$KERNEL_DIR/gcc32
+TC_DIR=$KERNEL_DIR/clang-llvm
 
 # Kernel info
 ZIPNAME="Syncronized"
-VERSION="Pre-release"
+VERSION="RB0.1"
+AUTHOR="Sultanㅤ👾 ⁪⁬⁮⁮⁮⁮ ‌‌‌"
 ARCH=arm64
-DEFCONFIG="merlin_defconfig"
-COMPILER=gcc
-LINKER=ld
+CONFIG="merlin_defconfig"
+COMPILER=${COMP}
+LTO="0"
+POLLY="0"
+LINKER=ld.lld
 
 # Device info
 MODEL="Redmi Note 9"
@@ -25,7 +36,9 @@ DEVICE="merlin"
 
 # Misc info
 CLEAN="1"
-SIGN=1
+SIGN="1"
+PUSH="$SEND_TO"
+
 if [[ $SIGN == 1 ]]; then
 	#Check for java
 	if ! hash java 2>/dev/null 2>&1; then
@@ -35,45 +48,84 @@ if [[ $SIGN == 1 ]]; then
 		SIGN=1
 	fi
 fi
+HOST="EagleProject"
+export DISTRO=$(source /etc/os-release && echo "${NAME}")
+KERVER=$(make kernelversion)
+COMMIT_HEAD=$(git log --oneline -1)
 
 # Date info
-DATE=$(TZ=Asia/Jakarta date)
-ZDATE=$(date "+%Y%m%d")
+DATE=$(date +"%d-%m-%Y")
+ZDATE="$(date "+%d%m%Y")"
 
 clone() {
 	echo " "
 	if [[ $COMPILER == "gcc" ]]; then
-		echo -e "\n\e[1;93m[*] Cloning GCC \e[0m"
-			git clone https://github.com/mvaisakh/gcc-arm64 --depth=1 -b gcc-master "${KDIR}"/gcc64
-			git clone https://github.com/mvaisakh/gcc-arm --depth=1 -b gcc-master "${KDIR}"/gcc32
-    elif [[ $COMPILER == "clang" ]]; then
-		echo -e "\n\e[1;93m[*] Removing previous CLANG directory \e[0m"
-			rm -rf proton-clang
-		echo -e "\e[1;93m[*] Cloning Clang! \e[0m"
-			wget https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.zip
-         	        unzip "${KDIR}"/master.zip
-                 	mv "${KDIR}"/proton-clang-master "${KDIR}"/proton-clang
+	    echo -e "\n\e[1;93m[*] Cloning Eva GCC \e[0m"
+	    git clone --depth=1 https://github.com/mvaisakh/gcc-arm gcc32
+	    git clone --depth=1 https://github.com/mvaisakh/gcc-arm64 gcc64
+	else
+	    echo -e "\n\e[1;93m[*] Cloning Proton clang 13 \e[0m"
+	    git clone --depth=1 https://github.com/kdrag0n/proton-clang clang-llvm
 	fi
-	        echo -e "\n\e[1;32m[*] Cloning Anykernel3 ! \e[0m"
-			git clone https://github.com/Eagle-Projekt/Anykernel3.git  --depth=1 -b master "${KDIR}"/Anykernel3
+
+	if [[ $LTO == "1" ]]; then
+		if [[ $COMPILER == "clang" || $COMPILER == "neutron" ]]; then
+			echo "CONFIG_LTO_CLANG=y" >>arch/arm64/configs/hopireika_defconfig
+			echo "CONFIG_LTO=y" >>arch/arm64/configs/hopireika_defconfig
+		else
+			echo "CONFIG_LTO_GCC=y" >>arch/arm64/configs/hopireika_defconfig
+		fi
+	fi
+
+	if [[ $POLLY == "1" ]]; then
+		if [[ $COMPILER == "clang" || $COMPILER == "neutron" ]]; then
+			echo "CONFIG_LLVM_POLLY=y" >>arch/arm64/configs/hopireika_defconfig
+		fi
+	fi
+
+	  echo -e "\n\e[1;93m[*] Cloning AnyKernel3 \e[0m"
+      git clone --depth 1 --no-single-branch https://github.com/Eagle-Projekt/Anykernel3.git -b master AnyKernel3
 }
 
 ##------------------------------------------------------##
 
 exports() {
-	KBUILD_BUILD_HOST="WSL"
-	KBUILD_BUILD_USER="Sultan"
+	KBUILD_BUILD_HOST="$HOST"
+	KBUILD_BUILD_USER="$AUTHOR"
+	SUBARCH=$ARCH
 
-	if [[ $COMPILER == "clang" ]]; then
-		 export PATH="${KDIR}"/proton-clang/bin/:/usr/bin/:${PATH}
-	elif [[ $COMPILER == "gcc" ]]; then
-		 export PATH="${KDIR}"/gcc32/bin:"${KDIR}"/gcc64/bin:/usr/bin/:${PATH}
+	if [[ $COMPILER == "gcc" ]]; then
+		KBUILD_COMPILER_STRING=$("$GCC64_DIR"/bin/aarch64-elf-gcc --version | head -n 1)
+		PATH=$GCC64_DIR/bin/:$GCC32_DIR/bin/:/usr/bin:$PATH
+	else
+	    KBUILD_COMPILER_STRING=$("$TC_DIR"/bin/clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')
+		PATH=$TC_DIR/bin/:$PATH
 	fi
 	PROCS=$(nproc --all)
 
 	export KBUILD_BUILD_USER KBUILD_BUILD_HOST \
 		KBUILD_COMPILER_STRING ARCH SUBARCH \
 		PATH
+}
+
+##---------------------------------------------------------##
+if [ ! -d "Telegram" ]; then
+  git clone --depth=1 https://github.com/Hopireika/telegram.sh Telegram
+fi
+TELEGRAM="$(pwd)/Telegram/telegram"
+tgm() {
+	"${TELEGRAM}" -H -D \
+		"$(
+			for POST in "${@}"; do
+				echo "${POST}"
+			done
+		)"
+}
+
+tgf() {
+	"${TELEGRAM}" -H \
+		-f "$1" \
+		"$2"
 }
 
 ##----------------------------------------------------------##
@@ -84,35 +136,49 @@ build_kernel() {
 		make clean && make mrproper && rm -rf out
 	fi
 
-	make O=out $DEFCONFIG
+	tgm "
+<b>🛠 Sync Kernel Build Triggered</b>
+<b>-----------------------------------------</b>
+<b>[*] Architecture</b>   => <code>$ARCH</code>
+<b>[*] Build Date</b>     => <code>$DATE</code>
+<b>[*] Device Name</b>    => <code>${MODEL} [${DEVICE}]</code>
+<b>[*] Defconfig</b>      => <code>$CONFIG</code>
+<b>[*] Kernel Name</b>    => <code>${ZIPNAME}</code>
+<b>[*] Kernel Version</b> => <code>${VERSION}</code>
+<b>[*] Linux Version</b>  => <code>$(make kernelversion)</code>
+<b>[*] Compiler Name</b>  => <code>${KBUILD_COMPILER_STRING}</code>
+<b>-----------------------------------------</b>
+"
+
+	echo "-$VERSION" >>localversion
+	make O=out $CONFIG
 	BUILD_START=$(date +"%s")
 
-	if [[ $COMPILER == "clang" ]]; then
-	       MAKE+=(
-		       ARCH=arm64
-                       CROSS_COMPILE=aarch64-linux-gnu-
-                       CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-                       LD="${LINKER}"
-                       AR=llvm-ar
-                       AS=llvm-as
-                       NM=llvm-nm
-                       OBJDUMP=llvm-objdump
-                       STRIP=llvm-strip
-                       CC=clang
-              )
-       elif [[ $COMPILER == "gcc" ]]; then
-	       MAKE+=(
-		       ARCH=arm64
-                       CROSS_COMPILE=aarch64-elf-
-                       CROSS_COMPILE_COMPAT=arm-eabi-
-                       LD="${KDIR}"/gcc64/bin/aarch64-elf-"${LINKER}"
-                       AR=aarch64-elf-ar
-                       AS=aarch64-elf-as
-                       NM=aarch64-elf-nm
-                       OBJDUMP=aarch64-elf-objdump
-                       OBJCOPY=aarch64-elf-objcopy
-                       CC=aarch64-elf-gcc
-	      )
+	if [[ $COMPILER == "gcc" ]]; then
+		MAKE+=(
+			CROSS_COMPILE_COMPAT=arm-eabi-
+			CROSS_COMPILE=aarch64-elf-
+			AR=llvm-ar
+			NM=llvm-nm
+			OBJCOPY=llvm-objcopy
+			OBJDUMP=llvm-objdump
+			STRIP=llvm-strip
+			OBJSIZE=llvm-size
+			LD=aarch64-elf-$LINKER
+		)
+	else
+		MAKE+=(
+			CROSS_COMPILE=aarch64-linux-gnu-
+			CROSS_COMPILE_COMPAT=arm-linux-gnueabi-
+			LLVM=1
+			CC=clang
+			AR=llvm-ar
+			OBJDUMP=llvm-objdump
+			STRIP=llvm-strip
+			NM=llvm-nm
+			OBJCOPY=llvm-objcopy
+			LD="$LINKER"
+		)
 	fi
 
 	echo -e "\n\e[1;93m[*] Building Kernel! \e[0m"
@@ -123,11 +189,13 @@ build_kernel() {
 	BUILD_END=$(date +"%s")
 	DIFF=$((BUILD_END - BUILD_START))
 
-	if [[ -f "${KDIR}"/out/arch/arm64/boot/Image ]]; then
-		echo -e "\n\e[1;32m[✓] Kernel successfully compiled!  \e[0m"
+	if [[ -f "$KERNEL_DIR"/out/arch/arm64/boot/Image ]]; then
+		echo -e "\n\e[1;32m[✓] Kernel successfully compiled! \e[0m"
 		gen_zip
+		push
 	else
 		echo -e "\n\e[1;32m[✗] Build Failed! \e[0m"
+		tgf "build.txt" "[X] Build failed to compile after $((DIFF / 60)) minute(s) and $((DIFF % 60)) seconds*"
 	fi
 
 }
@@ -136,31 +204,111 @@ build_kernel() {
 
 gen_zip() {
 	echo -e "\n\e[1;32m[*] Create a flashable zip! \e[0m"
-	mv "${KDIR}"/out/arch/arm64/boot/Image Anykernel3/
-	mv "${KDIR}"/out/arch/arm64/boot/dts/mediatek/mt6768.dtb Anykernel3/dtb
-	mv "${KDIR}"/out/arch/arm64/boot/dtbo.img Anykernel3/
-	cd  Anykernel3
-	zip -r $ZIPNAME-$VERSION-$DEVICE-"$ZDATE" . -x ".git*" -x "README.md" -x "*.zip"
+	mv "$KERNEL_DIR"/out/arch/arm64/boot/Image AnyKernel3
+	mv "$KERNEL_DIR"/out/arch/arm64/boot/dts/mediatek/mt6768.dtb AnyKernel3/dtb
+	mv "$KERNEL_DIR"/out/arch/arm64/boot/dtbo.img AnyKernel3
+	cdir AnyKernel3
+	zip -r $ZIPNAME-$VERSION-$DEVICE-"$ZDATE".zip . -x ".git*" -x "README.md" -x "*.zip"
 	ZIP_FINAL="$ZIPNAME-$VERSION-$DEVICE-$ZDATE"
 
 	if [[ $SIGN == 1 ]]; then
 		## Sign the zip before sending it to telegram
-		echo -e "\n\e[1;32m[*] Signing zip with AOSP keys! \e[0m"
+		echo -e "\n\e[1;32m[*] Sgining a zip! \e[0m"
+		tgm "<b>[*] Signing Zip file with AOSP keys!</b>"
 		curl -sLo zipsigner-3.0.jar https://github.com/Magisk-Modules-Repo/zipsigner/raw/master/bin/zipsigner-3.0-dexed.jar
 		java -jar zipsigner-3.0.jar "$ZIP_FINAL".zip "$ZIP_FINAL"-signed.zip
-		ZIP_FINAL="$ZIP_FINAL-signed"
+		ZIP_SIGN="$ZIP_FINAL-signed"
 		echo -e "\n\e[1;32m[✓] Zip Signed! \e[0m"
 	fi
+
+	cd ..
+	echo -e "\n\e[1;32m[✓] Create flashable kernel completed! \e[0m"
 }
 
-clean() {
-      echo -e "\n\e[1;32m[*] Cleaning work directory! \e[0m"
-      rm -rf out Anykernel3 gcc clang
-      echo -e "\n\e[1;32m[✓] Work directory has benn cleaned! \e[0m"
+push() {
+	# Create kernel info
+	echo -e "\n\e[1;93m[*] Generate source changelogs! \e[0m"
+	cfile="kernel-info-$VERSION-$ZDATE.md"
+	log="$(git log --oneline -n 10)"
+	flog="$(echo "$log" | sed -E 's/^([a-zA-Z0-9]+) (.*)/* \2/')"
+
+	touch $cfile
+	{
+		echo -e "## Syncronized Kernel"
+		echo -e "* Kernel name: $ZIPNAME-$VERSION"
+		echo -e "* Device name: ${MODEL} [$DEVICE]"
+		echo -e "* Linux version: $KERVER"
+		echo -e "* Build user: $AUTHOR"
+		echo -e "* Build host: $KBUILD_BUILD_HOST"
+		echo -e "* Compiler name: $KBUILD_COMPILER_STRING"
+		echo -e ""
+		echo -e "## Changelogs build $ZDATE"
+		echo -e "$flog"
+	} >>"$cfile"
+
+	if [[ "$PUSH" == "github" ]]; then
+		echo -e "\n\e[1;93m[*] Starting push kernel to Github Release! \e[0m"
+		org="Eagle-Projekt"
+		rel_repo="kernel-release"
+		rel_tag="$(date "+%d%m%Y")"
+		if [[ $SIGN == 1 ]]; then
+			rel_file="$ZIP_SIGN.zip"
+		else
+			rel_file="$ZIP_FINAL.zip"
+		fi
+		rel_release="https://github.com/${org}/$rel_repo/releases/tag/$rel_tag"
+		rel_link="https://github.com/$org/$rel_repo/releases/download/$rel_tag/$rel_file/"
+		rel_info="https://github.com/${org}/$rel_repo/blob/main/$cfile"
+
+		git clone https://github.com/$org/$rel_repo
+		cd kernel-release
+		cp ../AnyKernel3/$rel_file .
+		cp ../$cfile merlin/
+
+		git add $cfile
+		git commit -asm "merlin: Add Syncronized kernel $VERSION $rel_tag"
+		git gc
+		git push -f
+
+		if gh release view "${rel_tag}"; then
+			echo "Uploading build archive to '${rel_tag}'..."
+			gh release upload --clobber "${rel_tag}" "${rel_file}" && {
+				echo "Version ${rel_tag} updated!"
+			}
+		else
+			echo "Creating release with tag '${rel_tag}'..."
+			gh release create "${rel_tag}" "${rel_file}" -t "${rel_date}" && {
+				echo "Version ${rel_tag} released!"
+			}
+		fi
+		git push -f
+		echo -e "\n\e[1;32m[✓] Kernel succesfully pushed to https://github.com/$org/$rel_repo! \e[0m"
+		tgm "
+		<b>✅ Syncronized Kernel Release!</b>
+		<b>[*] Build date</b> => <code>$DATE</code>
+		<b>[*] Kernel info</b> => <a href='$rel_info'>Here</a>
+		<b>[*] Download link</b> => <a href='$rel_link'>Here</a>"
+		cd ..
+	elif [[ "$PUSH" == "telegram" ]]; then
+		cd AnyKernel3
+		cp ../$cfile .
+		if [[ $SIGN == 1 ]]; then
+			rel_file="$ZIP_SIGN.zip"
+		else
+			rel_file="$ZIP_FINAL.zip"
+		fi
+		tgm "
+		<b>✅ Syncronized kernel!</b>
+		<b>[*] Build date</b> => <code>$DATE</code>
+		"
+		tgf "$rel_file" "<b>[*] Compiler</b> => <code>${KBUILD_COMPILER_STRING}</code>"
+		tgf "$cfile" "<b>[*] Kernel information</b>"
+		cd ..
+	fi
+
 }
 
 clone
 exports
 build_kernel
-clean
 ##--------------------------------------------------##
