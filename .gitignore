@@ -9,7 +9,6 @@
 #
 # Normal rules (sorted alphabetically)
 #
-.*
 *.a
 *.bin
 *.bz2
@@ -124,3 +123,6 @@ all.config
 
 # fetched Android config fragments
 kernel/configs/android-*.cfg
+
+# Out directory after building kernel
+out/
